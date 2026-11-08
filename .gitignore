@@ -19,6 +19,10 @@ models/
 .env
 *.local.yaml
 
+# Local source brief
+*.doc
+*.docx
+
 # OS / editor
 .DS_Store
 Thumbs.db
