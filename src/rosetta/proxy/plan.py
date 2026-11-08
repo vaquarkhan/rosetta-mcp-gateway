@@ -1,13 +1,17 @@
-"""Translation plan. Phase 1 masks and restores; it does not translate."""
+"""Build a translation plan and rewrite only free-text leaves."""
 
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, field
 
 from rosetta.locking.entity_locker import EntityLocker
 from rosetta.proxy.locale import is_english
-from rosetta.types import TRANSLATABLE
+from rosetta.translate.base import TranslationError, Translator
+from rosetta.types import TRANSLATABLE, TranslationType
+
+_LOCK = re.compile(r"«L:\d+:»")
 
 
 @dataclass
@@ -16,6 +20,7 @@ class PlanItem:
     translation_type: str
     original: str
     masked: str
+    translated: str
 
 
 @dataclass
@@ -30,82 +35,103 @@ def build_plan(
     type_map: dict[str, str],
     locale: str | None,
     locker: EntityLocker,
+    translator: Translator | None = None,
+    target: str = "en",
 ) -> TranslationPlan:
     source = arguments if isinstance(arguments, dict) else {}
     reconstructed = copy.deepcopy(source)
     plan = TranslationPlan(locale=locale, reconstructed=reconstructed)
     if is_english(locale):
         return plan
-    _walk(reconstructed, type_map, "", plan.items, locker)
+    _walk(reconstructed, "", plan.items, type_map, locker, translator, locale or "", target)
     return plan
 
 
 def _walk(
     node: object,
-    type_map: dict[str, str],
     prefix: str,
     items: list[PlanItem],
+    type_map: dict[str, str],
     locker: EntityLocker,
+    translator: Translator | None,
+    locale: str,
+    target: str,
 ) -> None:
     if isinstance(node, dict):
-        for key, value in node.items():
+        for key, value in list(node.items()):
             path = f"{prefix}.{key}" if prefix else str(key)
-            _visit(node, key, value, type_map, path, items, locker)
+            replaced = _convert(value, path, items, type_map, locker, translator, locale, target)
+            if replaced is not _UNCHANGED:
+                node[key] = replaced
         return
     if isinstance(node, list):
         for index, value in enumerate(node):
-            _visit_element(node, index, value, type_map, prefix, items, locker)
+            replaced = _convert(value, prefix, items, type_map, locker, translator, locale, target)
+            if replaced is not _UNCHANGED:
+                node[index] = replaced
 
 
-def _visit(
-    parent: dict,
-    key: str,
+_UNCHANGED = object()
+
+
+def _convert(
     value: object,
+    path: str,
+    items: list[PlanItem],
     type_map: dict[str, str],
-    path: str,
-    items: list[PlanItem],
     locker: EntityLocker,
-) -> None:
+    translator: Translator | None,
+    locale: str,
+    target: str,
+):
     if isinstance(value, dict):
-        _walk(value, type_map, path, items, locker)
-        return
+        _walk(value, path, items, type_map, locker, translator, locale, target)
+        return _UNCHANGED
     if isinstance(value, list):
-        _walk(value, type_map, path + "[]", items, locker)
-        return
-    replaced = _lock_text(value, type_map.get(path), path, items, locker)
-    if replaced is not None:
-        parent[key] = replaced
-
-
-def _visit_element(
-    parent: list,
-    index: int,
-    value: object,
-    type_map: dict[str, str],
-    path: str,
-    items: list[PlanItem],
-    locker: EntityLocker,
-) -> None:
-    if isinstance(value, dict):
-        _walk(value, type_map, path, items, locker)
-        return
-    if isinstance(value, list):
-        _walk(value, type_map, path, items, locker)
-        return
-    replaced = _lock_text(value, type_map.get(path), path, items, locker)
-    if replaced is not None:
-        parent[index] = replaced
-
-
-def _lock_text(
-    value: object,
-    kind: str | None,
-    path: str,
-    items: list[PlanItem],
-    locker: EntityLocker,
-) -> str | None:
+        _walk(value, path + "[]", items, type_map, locker, translator, locale, target)
+        return _UNCHANGED
+    kind = type_map.get(path)
     if kind not in TRANSLATABLE or not isinstance(value, str):
-        return None
+        return _UNCHANGED
     masked, originals = locker.mask(value)
-    items.append(PlanItem(path=path, translation_type=kind, original=value, masked=masked))
-    return locker.restore(masked, originals)
+    if kind == TranslationType.FREE_TEXT.value and translator is not None:
+        translated = _translate_locked(masked, originals, locker, translator, locale, target)
+    else:
+        translated = locker.restore(masked, originals)
+    items.append(
+        PlanItem(
+            path=path,
+            translation_type=kind,
+            original=value,
+            masked=masked,
+            translated=translated,
+        )
+    )
+    return translated
+
+
+def _translate_locked(
+    masked: str,
+    originals: list[str],
+    locker: EntityLocker,
+    translator: Translator,
+    locale: str,
+    target: str,
+) -> str:
+    pieces = _LOCK.split(masked)
+    tokens = _LOCK.findall(masked)
+    indexes = [index for index, piece in enumerate(pieces) if piece.strip()]
+    batch = [pieces[index] for index in indexes]
+    translated = translator.translate(batch, locale, target) if batch else []
+    if len(translated) != len(batch):
+        raise TranslationError("translator returned the wrong number of strings")
+    produced = dict(zip(indexes, translated, strict=True))
+    rendered: list[str] = []
+    for index, piece in enumerate(pieces):
+        rendered.append(produced.get(index, piece))
+        if index < len(tokens):
+            rendered.append(tokens[index])
+    stitched = "".join(rendered)
+    if _LOCK.findall(stitched) != tokens:
+        return locker.restore(masked, originals)
+    return locker.restore(stitched, originals)

@@ -14,6 +14,7 @@ from rosetta.proxy.http_app import create_app
 from rosetta.proxy.otel import configure_tracing
 from rosetta.proxy.stdio import serve_stdio
 from rosetta.proxy.upstream import BridgedUpstream, HttpUpstream
+from rosetta.translate.factory import build_translator
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -27,7 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     configure_tracing()
     settings = load_settings(args.config)
-    gateway = Gateway(settings, build_upstream(settings))
+    gateway = Gateway(settings, build_upstream(settings), translator=build_translator(settings))
     if args.http and not args.stdio:
         uvicorn.run(create_app(gateway), host=settings.host, port=settings.port, log_level="info")
         return

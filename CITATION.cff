@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: Rosetta MCP Gateway
+message: >-
+  Citation is required. If you use this software, cite it with the metadata
+  in this file and keep the MIT copyright notice.
+type: software
+authors:
+  - family-names: Khan
+    given-names: Vaquar
+identifiers:
+  - type: url
+    description: Source repository
+    value: https://github.com/vaquarkhan/rosetta-mcp
+repository-code: "https://github.com/vaquarkhan/rosetta-mcp"
+url: "https://pypi.org/project/rosetta-mcp-gateway/"
+abstract: >-
+  Schema-aware multilingual translation gateway for the Model Context Protocol.
+  It normalizes free-text tool arguments into English and preserves keys, enums,
+  identifiers, and code.
+keywords:
+  - model-context-protocol
+  - mcp
+  - translation
+  - multilingual
+  - gateway
+license: MIT
+version: 0.1.0
+date-released: "2026-11-08"

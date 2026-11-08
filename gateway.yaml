@@ -1,5 +1,17 @@
-# Rosetta Phase 1. Translation providers are intentionally absent.
+# Pivot Mode: English schemas, arguments translated to English, prose results
+# translated back to the caller locale.
 schema_translation_mode: none
+
+translation:
+  # balanced: DeepL for its European set, Google Cloud v3 for the long
+  # tail, CTranslate2 Opus-MT when model_dir is set, then the dev fallback.
+  # airgap uses only model_dir. quality uses only DeepL and Google Cloud.
+  # dev uses only the fallback.
+  profile: balanced
+  fallback: mymemory
+  target: en
+  model_dir: ""
+  device: cpu
 
 upstream:
   name: upstream
@@ -11,6 +23,11 @@ upstream:
 server:
   host: 127.0.0.1
   port: 8080
+
+# Optional. Requires a separate install of mcp-bastion-python and acceptance
+# of that project's license. Off by default. ROSETTA_BASTION=1 turns it on.
+security:
+  bastion: false
 
 # Leaf property names that are shared domain terms, not free text.
 entity_locked_fields: []

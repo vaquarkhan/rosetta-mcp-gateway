@@ -1,4 +1,4 @@
-"""Request path for Phase 1: classify, pin, plan, forward. No translation."""
+"""Classify, pin, translate free text into English, and forward."""
 
 from __future__ import annotations
 
@@ -8,18 +8,24 @@ from rosetta.cache.catalog import Catalog
 from rosetta.config import Settings
 from rosetta.locking.entity_locker import EntityLocker
 from rosetta.proxy.locale import is_english, resolve_locale
+from rosetta.proxy.localize import localize_payload
 from rosetta.proxy.otel import tracer
 from rosetta.proxy.plan import TranslationPlan, build_plan
 from rosetta.proxy.upstream import Upstream
+from rosetta.security.bastion import BastionUnavailable, screen_texts
+from rosetta.translate.base import TranslationError, Translator
 from rosetta.types import TRANSLATABLE
 
 BYPASS_METHODS = {"ping", "notifications/initialized", "notifications/cancelled"}
 LOCALE_REQUIRED = -32602
 CATALOG_QUARANTINE = -32001
+TRANSLATION_FAILED = -32002
+BASTION_DENIED = -32003
+BASTION_UNAVAILABLE = -32004
 
 
 class Gateway:
-    def __init__(self, settings: Settings, upstream: Upstream) -> None:
+    def __init__(self, settings: Settings, upstream: Upstream, translator: Translator | None = None) -> None:
         self.settings = settings
         self.upstream = upstream
         self.catalog = Catalog(
@@ -27,6 +33,7 @@ class Gateway:
             tool_overrides=settings.tool_overrides,
         )
         self.locker = EntityLocker(settings.glossary)
+        self.translator = translator
         self.last_plan: TranslationPlan | None = None
 
     def handle(self, message: dict, headers: dict[str, str] | None = None) -> dict | None:
@@ -98,10 +105,32 @@ class Gateway:
             )
 
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-        plan = build_plan(arguments, record.type_map, locale, self.locker)
+        try:
+            plan = build_plan(
+                arguments,
+                record.type_map,
+                locale,
+                self.locker,
+                translator=self.translator,
+                target=self.settings.translation_target,
+            )
+        except TranslationError as exc:
+            span.set_attribute("rosetta.cache", "translation_failed")
+            return _error(
+                request_id,
+                TRANSLATION_FAILED,
+                "translation failed",
+                {"code": "TRANSLATION_FAILED", "detail": str(exc)},
+            )
         self.last_plan = plan
+        if self.settings.security_bastion:
+            denied = _bastion_error(request_id, plan)
+            if denied is not None:
+                span.set_attribute("rosetta.cache", denied["error"]["data"]["code"].lower())
+                return denied
         span.set_attribute("rosetta.locale", locale)
         span.set_attribute("rosetta.plan_items", len(plan.items))
+        span.set_attribute("rosetta.translated", self.translator is not None and not is_english(locale))
         span.set_attribute("rosetta.cache", "passthrough" if is_english(locale) else "plan")
 
         forwarded = copy.deepcopy(message)
@@ -109,6 +138,16 @@ class Gateway:
         if isinstance(forwarded_params, dict):
             forwarded_params["arguments"] = plan.reconstructed
         response, _headers = self.upstream.exchange(forwarded, headers)
+        if self.translator is not None and isinstance(response, dict) and not is_english(locale):
+            try:
+                response = localize_payload(response, locale, self.translator)
+            except TranslationError as exc:
+                return _error(
+                    request_id,
+                    TRANSLATION_FAILED,
+                    "translation failed",
+                    {"code": "TRANSLATION_FAILED", "detail": str(exc)},
+                )
         return response
 
     def _bootstrap(self, headers: dict[str, str]) -> None:
@@ -121,6 +160,49 @@ class Gateway:
             for tool in tools:
                 if isinstance(tool, dict):
                     self.catalog.observe(tool)
+
+
+def _bastion_error(request_id, plan: TranslationPlan) -> dict | None:
+    try:
+        match = screen_texts(_screen_inputs(plan))
+    except BastionUnavailable as exc:
+        return _error(
+            request_id,
+            BASTION_UNAVAILABLE,
+            "bastion unavailable",
+            {"code": "BASTION_UNAVAILABLE", "detail": str(exc)},
+        )
+    if match:
+        return _error(request_id, BASTION_DENIED, "request denied", {"code": "BASTION_DENIED"})
+    return None
+
+
+def _screen_inputs(plan: TranslationPlan) -> list[str]:
+    texts: list[str] = []
+    for item in plan.items:
+        if item.original:
+            texts.append(item.original)
+        if item.translated and item.translated != item.original:
+            texts.append(item.translated)
+    if not texts:
+        texts.extend(_strings(plan.reconstructed))
+    return texts
+
+
+def _strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        found: list[str] = []
+        for item in value.values():
+            found.extend(_strings(item))
+        return found
+    if isinstance(value, list):
+        found = []
+        for item in value:
+            found.extend(_strings(item))
+        return found
+    return []
 
 
 def _needs_translation(type_map: dict[str, str]) -> bool:

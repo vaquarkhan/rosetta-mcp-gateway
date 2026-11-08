@@ -1,0 +1,15 @@
+Rosetta MCP Gateway
+Copyright (c) 2026 Vaquar Khan
+
+This software is licensed under the MIT License. See the LICENSE file.
+Every copy and substantial portion must keep the copyright notice and the
+MIT permission notice.
+
+Citation is required for any use. Cite the project with CITATION.cff:
+
+Khan, Vaquar. (2026). Rosetta MCP Gateway (0.1.0).
+https://github.com/vaquarkhan/rosetta-mcp
+
+MCP-Bastion is not part of this package. If you turn on security.bastion, you
+use https://github.com/vaquarkhan/MCP-Bastion under that project's own
+license, including its citation requirement and its separate commercial terms.

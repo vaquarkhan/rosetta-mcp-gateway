@@ -4,14 +4,15 @@ Rosetta is a runtime, schema-aware multilingual translation gateway for the [Mod
 
 It is a **selective semantic normalization proxy**. Tool names, JSON keys, enums, identifiers, and code stay locked. Natural-language arguments are normalized into canonical English on the way in. Prose in tool results is translated back into the user’s language on the way out. Security checks run on that canonical English form, so English-tuned injection and DLP rules see the same text the backend API will execute.
 
-All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaquarkhan/rosetta-mcp)**, in **Python**. Proxy, classifier, translation, governance, cache, and the benchmark harness stay in this one tree. Phase 1 (proxy, catalog pin, AST classifier) is in `src/rosetta`. Translation starts in Phase 2.
+All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaquarkhan/rosetta-mcp)**, in **Python**. Proxy, classifier, translation, governance, cache, and the benchmark harness stay in this one tree. Phase 1 (proxy, catalog pin, AST classifier) and Pivot Mode translation are in `src/rosetta`. Governance is Phase 3.
 
 | | |
 | --- | --- |
 | Product | Rosetta MCP Gateway |
 | Repository | https://github.com/vaquarkhan/rosetta-mcp |
 | Language | Python 3.11+ (locked for v1) |
-| License target | Apache-2.0 |
+| License | MIT. Citation is required. See `LICENSE`, `NOTICE`, and `CITATION.cff`. |
+| Package | `rosetta-mcp-gateway` on PyPI. The name `rosetta-mcp` is already used by another project. |
 | v1 stack | FastAPI / MCP Python SDK, Redis, CTranslate2 |
 | v1 base | Extend the IBM ContextForge plugin spine and Redis cache. Run CTranslate2 in-process. |
 | v1 default mode | Pivot Mode: English schemas, translated arguments, localized prose results |
@@ -19,18 +20,22 @@ All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaqua
 
 The three figures below are the original figures from *Multilingual MCP Gateway Architecture*.
 
-## Run Phase 1
+## Run
 
-Phase 1 decides what may be translated and forwards the frame. It does not call a translation engine.
+Pivot Mode translates free-text arguments into English before the upstream MCP server sees them, then translates prose in the tool result back into the caller locale. Enums, numbers, identifiers, and SQL stay as they are. `gateway.yaml` sets `translation.profile` to `balanced`. With a `DEEPL_API_KEY`, European pairs go to DeepL. With `GOOGLE_TRANSLATE_API_KEY` and `GOOGLE_CLOUD_PROJECT`, Hindi, Arabic, Bengali, and the rest go to Google Cloud Translation v3. A `model_dir` runs CTranslate2 Opus-MT locally. MyMemory is only the last fallback when none of those are configured. `airgap` refuses the network. `quality` refuses the fallback.
 
 ```bash
 python -m pip install -e ".[dev]"
 pytest
 python -m rosetta serve --http
 python -m rosetta serve --stdio
+python -m pip install build
+python -m build
 ```
 
-`POST /mcp` is Streamable HTTP JSON-RPC. `Mcp-Method` and `Mcp-Name` select the route. Locale comes from `_meta.locale`, then `X-MCP-Locale`, then `Accept-Language`. A free-text `tools/call` without a locale returns `locale required`. English calls are forwarded with arguments left intact. Any other locale produces a translation plan and a reconstructed frame: keys, enums, numbers, and code spans stay as they were, and the plan lists the strings Phase 2 will send to a model.
+`python -m build` writes `dist/rosetta_mcp_gateway-0.1.0.tar.gz` and the wheel. Publish that directory with `twine upload dist/*` after `rosetta-mcp-gateway` is confirmed free on your PyPI account. Do not publish under the name `rosetta-mcp`.
+
+`POST /mcp` is Streamable HTTP JSON-RPC. `Mcp-Method` and `Mcp-Name` select the route. Locale comes from `_meta.locale`, then `X-MCP-Locale`, then `Accept-Language`. A free-text `tools/call` without a locale returns `locale required`. English calls are forwarded with arguments left intact. Any other locale translates free-text arguments into English when a provider is configured. Keys, enums, numbers, and code spans stay as they were.
 
 `GET /healthz`, `GET /readyz`, and `GET /catalog` are the operator endpoints. `POST /catalog/accept` with `{"name": "<tool>"}` clears a schema-pin quarantine. Point the upstream at `gateway.yaml` (`MCP_GW_CONFIG` overrides the path). Set `upstream.protocol` to `2025-11-25` when the backend still requires `initialize` and `Mcp-Session-Id`.
 
@@ -272,6 +277,31 @@ Rosetta targets **MCP 2026-07-28** and keeps a shim for **2025-11-25** servers.
 | Multi-round-trip requests (SEP-2322) | Held-open elicitation and sampling streams are replaced by `resultType: "input_required"` and a later retry carrying `inputResponses`. | The elicitation prompt is translated into the user language. On retry, `inputResponses` are normalized back to English. Approval holds use the same path. |
 
 ---
+
+## Chosen translation design
+
+The comparisons do not crown one model. They split by license, language, and the 120 ms tool-call budget.
+
+| Rejected for the hot path | Why |
+| --- | --- |
+| MyMemory as the production engine | Translation memory, 500-character cap, uneven wording. Fine as a dev fallback only. |
+| NLLB-200 as the commercial default | CC-BY-NC, and Meta marks it as a research model. About 228 ms per sentence versus about 96 ms for Opus-MT. |
+| MADLAD-400, SeamlessM4T, Tower | Higher quality on hard prose. Too large and too slow for a tool argument. SeamlessM4T and Tower are also non-commercial. |
+| Constrained glossary decoding | Best term inflection in the EAMT 2023 study, and too slow for interactive translation. |
+| Unofficial Google scrape | Rate-limited and not an API contract. |
+
+What the gateway does instead:
+
+1. **Mask, then translate, then check.** Placeholders, URLs, and glossary terms are removed before the engine runs, the same split used for software localization. If a mask token does not survive, that field is forwarded untranslated. Constrained decoding stays off the hot path.
+2. **`balanced` profile, per pair.** DeepL when both languages are in its set and `DEEPL_API_KEY` is set. Otherwise Google Cloud Translation v3 when `GOOGLE_TRANSLATE_API_KEY` and `GOOGLE_CLOUD_PROJECT` are set. Otherwise CTranslate2 Opus-MT INT8, beam size 1, when `model_dir` points at a converted model. Otherwise the MyMemory fallback.
+3. **`airgap` profile.** Opus-MT only. NLLB loads only if you point `model_dir` at it yourself and accept the non-commercial license.
+4. **Entity-locked fields never enter the engine.** Enums, identifiers, and SQL stay on the schema rules from Phase 1.
+
+## Security and MCP-Bastion
+
+[MCP-Bastion](https://github.com/vaquarkhan/MCP-Bastion) can screen the English tool arguments for prompt injection. It is not vendored and it is not a required dependency. Its license is separate from this MIT license: non-commercial use has its own citation terms, and commercial use needs a license from that project.
+
+Leave `security.bastion` false unless you install `mcp-bastion-python` and accept that license. `ROSETTA_BASTION=1` is the same switch. When it is on, Rosetta scans the original free text and the English normalization before the upstream call. A match returns `request denied` and does not call the upstream server. If the package is missing, the call fails closed with `bastion unavailable`.
 
 ## Translation engine tiers
 
@@ -545,7 +575,11 @@ Show the four gaps closing, and ship a stack someone else can run.
 
 ## Naming and license
 
-The product name is **Rosetta MCP Gateway**. This repository is `rosetta-mcp`.
+The product name is **Rosetta MCP Gateway**. This repository is `rosetta-mcp`. The PyPI distribution is `rosetta-mcp-gateway`, because `rosetta-mcp` is already published by another project.
+
+Use requires two things. Keep the MIT copyright and permission notice with every copy. Cite the project with `CITATION.cff`:
+
+Khan, Vaquar. (2026). Rosetta MCP Gateway (0.1.0). https://github.com/vaquarkhan/rosetta-mcp
 
 Names already taken, and avoided: `library-of-babel-mcp`, BabelArena / BabelFlow, `hermes-mcp-gateway`, and `aegis-mcp-gateway`.
 
@@ -558,7 +592,7 @@ Names already taken, and avoided: `library-of-babel-mcp`, BabelArena / BabelFlow
 | `targum-mcp-gateway` | Spoken translation with added context. Cleaner namespace, less immediately legible. |
 | `pangloss-mcp-proxy` | Fits a tiny sidecar that refuses the governance scope. |
 
-Core license: **Apache-2.0**, aligned with ContextForge, Aegis, and the official TypeScript MCP SDK. NLLB-200 weights stay out of the default image because of CC-BY-NC. Opus-MT checkpoints shipped in the air-gapped profile must be ones whose model license allows commercial use; the README of that profile will name the exact checkpoint.
+Core license: **MIT** (`LICENSE`), with citation required (`CITATION.cff`, `NOTICE`). NLLB-200 weights stay out of the default image because of CC-BY-NC. Opus-MT checkpoints shipped in the air-gapped profile must be ones whose model license allows commercial use; the README of that profile will name the exact checkpoint. MCP-Bastion, when enabled, stays under its own license.
 
 ---
 

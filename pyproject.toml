@@ -3,12 +3,21 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rosetta-mcp"
+name = "rosetta-mcp-gateway"
 version = "0.1.0"
 description = "Schema-aware multilingual MCP translation gateway"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Vaquar Khan" }]
+keywords = ["mcp", "model-context-protocol", "gateway", "translation", "i18n", "multilingual"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Internationalization",
+]
 dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.32",
@@ -16,13 +25,20 @@ dependencies = [
   "httpx>=0.27",
   "opentelemetry-api>=1.27",
   "opentelemetry-sdk>=1.27",
+  "deep-translator>=1.11",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+local = ["ctranslate2>=4.5", "transformers>=4.44", "sentencepiece>=0.2"]
+
+[project.urls]
+Homepage = "https://github.com/vaquarkhan/rosetta-mcp"
+Repository = "https://github.com/vaquarkhan/rosetta-mcp"
+Issues = "https://github.com/vaquarkhan/rosetta-mcp/issues"
 
 [project.scripts]
-rosetta-mcp = "rosetta.__main__:main"
+rosetta-mcp-gateway = "rosetta.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

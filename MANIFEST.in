@@ -1,0 +1,2 @@
+include LICENSE NOTICE CITATION.cff README.md gateway.yaml
+recursive-include docs/images *.png
