@@ -4,7 +4,7 @@ Rosetta is a runtime, schema-aware multilingual translation gateway for the [Mod
 
 It is a **selective semantic normalization proxy**. Tool names, JSON keys, enums, identifiers, and code stay locked. Natural-language arguments are normalized into canonical English on the way in. Prose in tool results is translated back into the user’s language on the way out. Security checks run on that canonical English form, so English-tuned injection and DLP rules see the same text the backend API will execute.
 
-All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaquarkhan/rosetta-mcp)**, in **Python**. Proxy, classifier, translation, governance, cache, and the benchmark harness stay in this one tree. Phase 1 has not started.
+All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaquarkhan/rosetta-mcp)**, in **Python**. Proxy, classifier, translation, governance, cache, and the benchmark harness stay in this one tree. Phase 1 (proxy, catalog pin, AST classifier) is in `src/rosetta`. Translation starts in Phase 2.
 
 | | |
 | --- | --- |
@@ -18,6 +18,21 @@ All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaqua
 | Planning horizon | 16 weeks, four phases |
 
 The three figures below are the original figures from *Multilingual MCP Gateway Architecture*.
+
+## Run Phase 1
+
+Phase 1 decides what may be translated and forwards the frame. It does not call a translation engine.
+
+```bash
+python -m pip install -e ".[dev]"
+pytest
+python -m rosetta serve --http
+python -m rosetta serve --stdio
+```
+
+`POST /mcp` is Streamable HTTP JSON-RPC. `Mcp-Method` and `Mcp-Name` select the route. Locale comes from `_meta.locale`, then `X-MCP-Locale`, then `Accept-Language`. A free-text `tools/call` without a locale returns `locale required`. English calls are forwarded with arguments left intact. Any other locale produces a translation plan and a reconstructed frame: keys, enums, numbers, and code spans stay as they were, and the plan lists the strings Phase 2 will send to a model.
+
+`GET /healthz`, `GET /readyz`, and `GET /catalog` are the operator endpoints. `POST /catalog/accept` with `{"name": "<tool>"}` clears a schema-pin quarantine. Point the upstream at `gateway.yaml` (`MCP_GW_CONFIG` overrides the path). Set `upstream.protocol` to `2025-11-25` when the backend still requires `initialize` and `Mcp-Session-Id`.
 
 ---
 
@@ -399,13 +414,11 @@ Sixteen weeks, all of it in this repository, in Python. Each phase has a demo, a
 Suggested layout once Phase 1 starts:
 
 ```text
-rosetta/
+src/rosetta/
   proxy/         # stdio + Streamable HTTP, header routing, locale
   classifier/    # four translation types, YAML overrides, schema hash
   locking/       # sentinel mask and restore, glossary
-  translate/     # provider SPI (wired in Phase 2)
-  governance/    # fail-closed chain (wired in Phase 3)
-  cache/         # Redis type maps, locale cache, ttlMs
+  cache/         # in-memory type maps and catalog pin (Redis in Phase 2)
 gateway.yaml
 ```
 

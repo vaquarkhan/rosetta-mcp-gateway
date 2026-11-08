@@ -1,0 +1,27 @@
+# Rosetta Phase 1. Translation providers are intentionally absent.
+schema_translation_mode: none
+
+upstream:
+  name: upstream
+  url: http://127.0.0.1:9100/mcp
+  # 2026-07-28 is stateless. Set 2025-11-25 to perform initialize
+  # and attach Mcp-Session-Id before forwarding.
+  protocol: "2026-07-28"
+
+server:
+  host: 127.0.0.1
+  port: 8080
+
+# Leaf property names that are shared domain terms, not free text.
+entity_locked_fields: []
+
+# Literal strings masked inside a translatable value before Phase 2.
+glossary: []
+
+# Per-tool dotted-path overrides. Operator assignment wins over heuristics.
+# tools:
+#   search_invoices:
+#     fields:
+#       query: TYPE_FREE_TEXT
+#       cluster: TYPE_ENTITY_LOCKED
+tools: {}
