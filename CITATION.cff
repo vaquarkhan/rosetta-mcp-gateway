@@ -10,8 +10,8 @@ authors:
 identifiers:
   - type: url
     description: Source repository
-    value: https://github.com/vaquarkhan/rosetta-mcp
-repository-code: "https://github.com/vaquarkhan/rosetta-mcp"
+    value: https://github.com/vaquarkhan/rosetta-mcp-gateway
+repository-code: "https://github.com/vaquarkhan/rosetta-mcp-gateway"
 url: "https://pypi.org/project/rosetta-mcp-gateway/"
 abstract: >-
   Schema-aware multilingual translation gateway for the Model Context Protocol.

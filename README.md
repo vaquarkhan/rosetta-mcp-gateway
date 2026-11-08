@@ -4,12 +4,12 @@ Rosetta is a runtime, schema-aware multilingual translation gateway for the [Mod
 
 It is a **selective semantic normalization proxy**. Tool names, JSON keys, enums, identifiers, and code stay locked. Natural-language arguments are normalized into canonical English on the way in. Prose in tool results is translated back into the user’s language on the way out. Security checks run on that canonical English form, so English-tuned injection and DLP rules see the same text the backend API will execute.
 
-All four phases are built in **[vaquarkhan/rosetta-mcp](https://github.com/vaquarkhan/rosetta-mcp)**, in **Python**. Proxy, classifier, translation, governance, cache, and the benchmark harness stay in this one tree. Phase 1 (proxy, catalog pin, AST classifier) and Pivot Mode translation are in `src/rosetta`. Governance is Phase 3.
+All four phases are built in **[vaquarkhan/rosetta-mcp-gateway](https://github.com/vaquarkhan/rosetta-mcp-gateway)**, in **Python**. Proxy, classifier, translation, governance, cache, and the benchmark harness stay in this one tree. Phase 1 (proxy, catalog pin, AST classifier) and Pivot Mode translation are in `src/rosetta`. Governance is Phase 3.
 
 | | |
 | --- | --- |
 | Product | Rosetta MCP Gateway |
-| Repository | https://github.com/vaquarkhan/rosetta-mcp |
+| Repository | https://github.com/vaquarkhan/rosetta-mcp-gateway |
 | Language | Python 3.11+ (locked for v1) |
 | License | MIT. Citation is required. See `LICENSE`, `NOTICE`, and `CITATION.cff`. |
 | Package | `rosetta-mcp-gateway` on PyPI. The name `rosetta-mcp` is already used by another project. |
@@ -575,11 +575,11 @@ Show the four gaps closing, and ship a stack someone else can run.
 
 ## Naming and license
 
-The product name is **Rosetta MCP Gateway**. This repository is `rosetta-mcp`. The PyPI distribution is `rosetta-mcp-gateway`, because `rosetta-mcp` is already published by another project.
+The product name is **Rosetta MCP Gateway**. This repository is `rosetta-mcp-gateway`. The PyPI distribution uses the same name. The shorter name `rosetta-mcp` is already published on PyPI by another project.
 
 Use requires two things. Keep the MIT copyright and permission notice with every copy. Cite the project with `CITATION.cff`:
 
-Khan, Vaquar. (2026). Rosetta MCP Gateway (0.1.0). https://github.com/vaquarkhan/rosetta-mcp
+Khan, Vaquar. (2026). Rosetta MCP Gateway (0.1.0). https://github.com/vaquarkhan/rosetta-mcp-gateway
 
 Names already taken, and avoided: `library-of-babel-mcp`, BabelArena / BabelFlow, `hermes-mcp-gateway`, and `aegis-mcp-gateway`.
 

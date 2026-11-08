@@ -33,9 +33,9 @@ dev = ["pytest>=8"]
 local = ["ctranslate2>=4.5", "transformers>=4.44", "sentencepiece>=0.2"]
 
 [project.urls]
-Homepage = "https://github.com/vaquarkhan/rosetta-mcp"
-Repository = "https://github.com/vaquarkhan/rosetta-mcp"
-Issues = "https://github.com/vaquarkhan/rosetta-mcp/issues"
+Homepage = "https://github.com/vaquarkhan/rosetta-mcp-gateway"
+Repository = "https://github.com/vaquarkhan/rosetta-mcp-gateway"
+Issues = "https://github.com/vaquarkhan/rosetta-mcp-gateway/issues"
 
 [project.scripts]
 rosetta-mcp-gateway = "rosetta.__main__:main"

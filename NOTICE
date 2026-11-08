@@ -8,7 +8,7 @@ MIT permission notice.
 Citation is required for any use. Cite the project with CITATION.cff:
 
 Khan, Vaquar. (2026). Rosetta MCP Gateway (0.1.0).
-https://github.com/vaquarkhan/rosetta-mcp
+https://github.com/vaquarkhan/rosetta-mcp-gateway
 
 MCP-Bastion is not part of this package. If you turn on security.bastion, you
 use https://github.com/vaquarkhan/MCP-Bastion under that project's own
